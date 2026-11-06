@@ -171,6 +171,7 @@ details.card summary::after{content:" ▾"}
   <div class="card">
     <div class="card-title"><span>Risultati ultimo salto</span><span id="resProtoBadge" style="color:var(--primary)">--</span></div>
     <div class="warn-box" id="warnBox"></div>
+    <button class="btn-sec" style="width:100%;margin-bottom:10px" onclick="exportRaw()">📤 INVIA DATI GREZZI DI QUESTO SALTO</button>
     <div class="kpi-grid" id="kpiGrid"><div class="kpi-card main"><div class="kpi-lbl">Nessun salto analizzato</div><div class="kpi-val">--</div></div></div>
     <div id="repsWrap"></div>
     <div class="card-title" style="margin-top:8px"><span>Tracciato inerziale</span>
@@ -253,11 +254,22 @@ function maxIn(t, y, ta, tb) {
   return m;
 }
 
-function detectFlights(t, sm, ng) {
+function median5(x) {
+  const n = x.length, y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const w = []; for (let k = -2; k <= 2; k++) w.push(x[Math.min(n - 1, Math.max(0, i + k))]);
+    w.sort((a, b) => a - b); y[i] = w[2];
+  }
+  return y;
+}
+function detectFlights(t, sm, ng, mp = {}) {
   const N = sm.length, segs = [];
+  const mergeGap = mp.gap || CFG.mergeGap, mergeMaxG = mp.maxG || CFG.mergeMaxG;
+  // nucleo del volo su filtro mediano: elimina i colpi brevi del telefono nella tasca
+  const md = median5(ng);
   let s = -1;
   for (let i = 0; i < N; i++) {
-    const low = sm[i] < CFG.flightThr;
+    const low = md[i] < CFG.flightThr;
     if (low && s < 0) s = i;
     if (s >= 0 && (!low || i === N - 1)) { segs.push([s, low ? i : i - 1]); s = -1; }
   }
@@ -266,7 +278,7 @@ function detectFlights(t, sm, ng) {
     const last = merged[merged.length - 1];
     let gapMax = 0;
     if (last) for (let j = last[1] + 1; j < g[0]; j++) gapMax = Math.max(gapMax, sm[j]);
-    if (last && t[g[0]] - t[last[1]] <= CFG.mergeGap && gapMax < CFG.mergeMaxG) last[1] = g[1];
+    if (last && t[g[0]] - t[last[1]] <= mergeGap && gapMax < mergeMaxG) last[1] = g[1];
     else merged.push([g[0], g[1]]);
   }
   const flights = [];
@@ -341,7 +353,7 @@ function findQuiet(t, ng, iLimit) {
 // Accelerazione verticale (m/s², positiva verso l'alto, gravità rimossa).
 // Con giroscopio: la direzione della gravità nel sistema del telefono viene stimata nella fase ferma
 // e poi ruotata con la velocità angolare (filtro complementare) -> compensa l'inclinazione del tronco nel CMJ.
-function verticalAccel(raw, t, nrm, q, g0, useGyro) {
+function verticalAccel(raw, t, nrm, q, g0, useGyro, gk = 1) {
   const N = raw.length, av = new Float64Array(N), scale = G / g0;
   for (let i = 0; i < N; i++) av[i] = nrm[i] * scale - G;
   if (!useGyro || !q) return av;
@@ -351,7 +363,7 @@ function verticalAccel(raw, t, nrm, q, g0, useGyro) {
   for (let i = q.s; i < N; i++) {
     if (i > q.s) {
       const dt = t[i] - t[i - 1];
-      const wx = (raw[i].wx + raw[i - 1].wx) / 2, wy = (raw[i].wy + raw[i - 1].wy) / 2, wz = (raw[i].wz + raw[i - 1].wz) / 2;
+      const wx = gk * (raw[i].wx + raw[i - 1].wx) / 2, wy = gk * (raw[i].wy + raw[i - 1].wy) / 2, wz = gk * (raw[i].wz + raw[i - 1].wz) / 2;
       // vettore fisso nel mondo, visto dal telefono che ruota con ω:  dg/dt = g × ω
       const cx = gy * wz - gz * wy, cy = gz * wx - gx * wz, cz = gx * wy - gy * wx;
       gx += cx * dt; gy += cy * dt; gz += cz * dt;
@@ -384,7 +396,9 @@ function analyzeTrial(raw, proto, opt = {}) {
   let g0 = median(nrm);
   let ng = Array.from(nrm, v => v / g0);
   let sm = smooth3(ng);
-  let flights = detectFlights(t, sm, ng);
+  // CMJ/SJ: un solo volo, dopo l'atterraggio il contatto dura > 0.3 s -> si possono unire buchi più lunghi
+  const mp = (proto === 'CMJ' || proto === 'SJ') ? { gap: 0.15, maxG: 2.0 } : {};
+  let flights = detectFlights(t, sm, ng, mp);
   out.minG = Math.min(...sm); out.maxG = Math.max(...sm);
   if (!flights.length) {
     out.err = `Nessun volo rilevato (min ${out.minG.toFixed(2)} G, max ${out.maxG.toFixed(2)} G). Il telefono deve essere ben fissato e devi eseguire un salto completo.`;
@@ -399,7 +413,7 @@ function analyzeTrial(raw, proto, opt = {}) {
     g0 = g0 * q.mean;
     ng = Array.from(nrm, v => v / g0);
     sm = smooth3(ng);
-    flights = detectFlights(t, sm, ng);
+    flights = detectFlights(t, sm, ng, mp);
     if (q.weak) out.warnings.push('Fase di immobilità iniziale poco stabile: resta fermo durante il countdown.');
   } else out.warnings.push('Nessuna fase ferma prima del salto: calcolo con velocità di stacco non disponibile.');
   out.g0 = g0; out.quiet = q ? { t0: t[q.s], t1: t[q.e], sd: q.sd } : null;
@@ -407,24 +421,41 @@ function analyzeTrial(raw, proto, opt = {}) {
   const valid = flights.filter(f => f.pushPeak >= CFG.minPushG);
   out.flights = flights;
 
-  // 3) giroscopio
+  // 3) giroscopio: segno e unità del giroscopio cambiano tra telefoni/browser.
+  //    Si provano più interpretazioni (e il solo modulo dell'accelerazione) e si sceglie quella fisicamente coerente.
   const gyroPresent = raw.filter(s => s.wx !== null && s.wx !== undefined && isFinite(s.wx)).length > 0.9 * N;
-  let useGyro = opt.useGyro !== false && gyroPresent && !!q;
-  if (useGyro) {
-    let wsum = 0;
-    for (let i = q.s; i <= q.e; i++) wsum += Math.hypot(raw[i].wx, raw[i].wy, raw[i].wz);
-    if (wsum / (q.e - q.s + 1) > 0.35) { useGyro = false; out.warnings.push('Giroscopio non affidabile a riposo: uso il modulo dell\'accelerazione.'); }
-  }
   if (gyroPresent) for (const s of raw) { if (!isFinite(s.wx)) { s.wx = 0; s.wy = 0; s.wz = 0; } }
-  out.gyroUsed = useGyro;
-  const av = verticalAccel(raw, t, nrm, q, g0, useGyro);
-
-  // 4) velocità verticale (integrazione trapezoidale dalla fine della fase ferma)
-  const v = new Float64Array(N).fill(NaN);
-  if (q) {
-    v[q.e] = 0;
-    for (let i = q.e + 1; i < N; i++) v[i] = v[i - 1] + 0.5 * (av[i] + av[i - 1]) * (t[i] - t[i - 1]);
+  const integrate = av => {
+    const v = new Float64Array(N).fill(NaN);
+    if (q) { v[q.e] = 0; for (let i = q.e + 1; i < N; i++) v[i] = v[i - 1] + 0.5 * (av[i] + av[i - 1]) * (t[i] - t[i - 1]); }
+    return v;
+  };
+  const cands = [{ mode: 'modulo', gyro: false, gk: 1 }];
+  if (opt.useGyro !== false && gyroPresent && q) {
+    const D = 180 / Math.PI;
+    cands.unshift({ mode: 'gyro', gyro: true, gk: 1 }, { mode: 'gyro-inv', gyro: true, gk: -1 }, { mode: 'gyro-rad', gyro: true, gk: D }, { mode: 'gyro-rad-inv', gyro: true, gk: -D });
   }
+  for (const c of cands) { c.av = verticalAccel(raw, t, nrm, q, g0, c.gyro, c.gk); c.v = integrate(c.av); }
+  let pick = cands.find(c => c.mode === 'gyro') || cands[cands.length - 1];
+  out.candDebug = [];
+  if (q && (proto === 'CMJ' || proto === 'SJ') && valid.length) {
+    const m = valid.reduce((a, b) => (b.tv > a.tv ? b : a));
+    const tEnd = t[N - 1];
+    let best = null;
+    for (const c of cands) {
+      const v0 = interpAt(t, c.v, m.tTO0);
+      // a fine prova l'atleta è fermo: la velocità integrata deve tornare ~0
+      let vEnd = NaN;
+      if (tEnd - m.tLand0 > 0.6) { let sum = 0, n = 0; for (let i = idxAt(t, tEnd - 0.3); i < N; i++) { sum += c.v[i]; n++; } vEnd = sum / n; }
+      const plausible = v0 > 0.5 && v0 < 5;
+      const score = (plausible ? 0 : 100) + (isFinite(vEnd) ? Math.abs(vEnd) : 0) + (c.gyro ? 0 : 0.05);
+      out.candDebug.push(`${c.mode}: v0 ${v0.toFixed(2)} vFine ${isFinite(vEnd) ? vEnd.toFixed(2) : 'n/d'}`);
+      if (!best || score < best.score) best = Object.assign(c, { score });
+    }
+    pick = best;
+  }
+  out.gyroUsed = pick.gyro; out.vertMode = pick.mode;
+  const av = pick.av, v = pick.v;
   out.series = { t, sm, v };
 
   const hFromTv = tv => G * tv * tv / 8;
@@ -461,7 +492,10 @@ function analyzeTrial(raw, proto, opt = {}) {
       out.tEcc = t[iP0] - t[iOn]; out.tProp = main.tTO0 - t[iP0];
       out.peakF = peakF; out.peakP = peakP;
       if (v0 > 0.5 && v0 < 5) out.hV0 = v0 * v0 / (2 * G);
-      else out.warnings.push('Velocità di stacco non plausibile: uso solo il tempo di volo.');
+      else {
+        out.warnings.push('Velocità di stacco non plausibile: uso solo il tempo di volo.');
+        ['v0', 'tTotal', 'tEcc', 'tProp', 'peakF', 'peakP'].forEach(k => { out[k] = undefined; });
+      }
       if (proto === 'SJ' && vmin < -0.10) out.warnings.push(`Contromovimento rilevato (v min ${vmin.toFixed(2)} m/s): lo SJ deve partire da fermo a 90°.`);
       if (out.hV0 && Math.abs(out.hV0 - out.hTV) / out.hTV > 0.15)
         out.warnings.push(`Metodi discordanti (TV ${(out.hTV * 100).toFixed(1)} cm vs V0 ${(out.hV0 * 100).toFixed(1)} cm): controlla fissaggio del telefono o atterraggio a gambe piegate.`);
@@ -528,8 +562,8 @@ const st = {
 };
 let currentProto = 'CMJ';
 const PROTO = {
-  CMJ: { rec: 2.8, help: 'In piedi, mani sui fianchi. Resta FERMO durante il countdown, poi al "Salta!" contromovimento e salto massimale. Atterra a gambe tese sullo stesso punto.' },
-  SJ:  { rec: 2.8, help: 'Scendi a 90° PRIMA del countdown e resta fermo fino al "Salta!". Spinta senza contromovimento, mani sui fianchi.' },
+  CMJ: { rec: 3.5, help: 'In piedi, mani sui fianchi. Resta FERMO durante il countdown, poi al "Salta!" contromovimento e salto massimale. Atterra a gambe tese sullo stesso punto.' },
+  SJ:  { rec: 3.5, help: 'Scendi a 90° PRIMA del countdown e resta fermo fino al "Salta!". Spinta senza contromovimento, mani sui fianchi.' },
   DJ:  { rec: 3.5, help: 'In piedi sul box, fermo. Al "Salta!" scendi (non saltare giù), atterra e rimbalza il più in alto possibile con il minor contatto.' },
   RJ:  { rec: 6.5, help: 'Fermo durante il countdown. Al "Salta!" un salto e poi 5 rimbalzi consecutivi: contatti brevi, gambe rigide, mani sui fianchi.' }
 };
@@ -772,7 +806,7 @@ function boscoIndex(athlete) {
 
 function renderResult() {
   const res = st.lastRes, grid = document.getElementById('kpiGrid');
-  document.getElementById('resProtoBadge').textContent = res ? (res.ok ? `${res.proto} · ${res.hz.toFixed(0)} Hz${res.gyroUsed ? ' · gyro' : ''}` : 'non valido') : '--';
+  document.getElementById('resProtoBadge').textContent = res ? (res.ok ? `${res.proto} · ${res.hz.toFixed(0)} Hz${res.vertMode ? ' · ' + res.vertMode : ''}` : 'non valido') : '--';
   document.getElementById('warnBox').innerHTML = res ? (res.ok ? res.warnings : [res.err, ...res.warnings]).map(w => '⚠️ ' + w).join('<br>') : '';
   document.getElementById('repsWrap').innerHTML = '';
   if (!res || !res.ok) { grid.innerHTML = '<div class="kpi-card main"><div class="kpi-lbl">Nessun salto valido</div><div class="kpi-val">--</div></div>'; drawChart(); return; }
@@ -805,7 +839,11 @@ function renderResult() {
   drawChart();
 }
 
-function drawChart() {
+function drawChart() { try { drawChartInner(); } catch (e) {
+  const c = document.getElementById('oscChart'), ctx = c && c.getContext('2d');
+  if (ctx) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#f87171'; ctx.font = '13px sans-serif'; ctx.fillText('Errore grafico: ' + e.message, 10, 30); }
+} }
+function drawChartInner() {
   const c = document.getElementById('oscChart'); if (!c || !c.clientWidth) return;
   const dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
   c.width = W * dpr; c.height = H * dpr;
@@ -857,7 +895,12 @@ function renderHistory() {
 }
 function clearHistory() { if (!confirm('Cancellare tutto lo storico?')) return; st.hist = []; lsSet('jumplab_hist_v2', []); renderHistory(); }
 
-function download(name, text) {
+async function download(name, text) {
+  // Android: il menu di condivisione (WhatsApp, Gmail, Drive...) funziona anche nell'app installata
+  try {
+    const file = new File([text], name, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
@@ -876,7 +919,7 @@ function exportCSV() {
 function exportRaw() {
   if (!st.lastRaw || !st.lastRaw.length) return;
   const t0 = st.lastRaw[0].t;
-  let csv = 't_ms,ax,ay,az,wx_rad_s,wy_rad_s,wz_rad_s\n';
+  let csv = `# ${st.lastProto} ${navigator.userAgent} sorgente=${st.active}\n` + 't_ms,ax,ay,az,wx_rad_s,wy_rad_s,wz_rad_s\n';
   st.lastRaw.forEach(s => { csv += [(s.t - t0).toFixed(2), s.ax, s.ay, s.az, s.wx, s.wy, s.wz].join(',') + '\n'; });
   download(`jump_lab_raw_${st.lastProto}_${Date.now()}.csv`, csv);
 }
