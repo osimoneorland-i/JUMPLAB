@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>JUMP LAB - IMU lombare</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0f19">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{--bg:#0b0f19;--card:#151c2c;--border:#263147;--primary:#3b82f6;--accent:#10b981;--warn:#f59e0b;--danger:#ef4444;--text:#f8fafc;--muted:#94a3b8;--cyan:#22d3ee}
+*{box-sizing:border-box;margin:0;padding:0;font-family:system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);padding-bottom:30px;overflow-x:hidden}
+header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:50}
+.brand{font-weight:800;font-size:1.15rem;letter-spacing:.5px;display:flex;align-items:center;gap:8px}
+.badge-hz{background:#1e293b;border:1px solid var(--border);padding:4px 10px;border-radius:99px;font-size:.78rem;font-weight:700;color:var(--accent)}
+.profile-bar{background:#111726;border-bottom:1px solid var(--border);padding:10px 16px;display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px}
+.input-grp{display:flex;flex-direction:column;gap:3px}
+.input-grp label{font-size:.68rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+.input-grp input,.input-grp select{background:var(--card);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:8px;font-size:.9rem;font-weight:600;width:100%}
+.tabs{display:grid;grid-template-columns:1fr 1fr;margin:12px 16px;background:var(--card);border-radius:12px;padding:4px;border:1px solid var(--border)}
+.tab-btn{background:transparent;border:none;color:var(--muted);padding:11px;font-weight:700;font-size:.88rem;border-radius:9px;cursor:pointer}
+.tab-btn.active{background:var(--primary);color:#fff}
+.page{display:none;padding:0 16px}.page.active{display:block}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+.card-title{font-size:.75rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sensor-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.sensor-box{background:#0f1523;border:1px solid var(--border);border-radius:10px;padding:10px}
+.sensor-box h4{font-size:.7rem;color:var(--muted);margin-bottom:4px}
+.sensor-val{font-family:monospace;font-size:.85rem;line-height:1.4}
+.g-meter-wrap{background:#0f1523;border-radius:10px;padding:10px;border:1px solid var(--border);margin-bottom:10px}
+.g-bar-bg{height:12px;background:#1e293b;border-radius:6px;overflow:hidden;margin-top:6px}
+.g-bar-fill{height:100%;width:25%;background:linear-gradient(90deg,var(--primary),var(--accent))}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn-sec{background:#1e293b;border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-weight:700;font-size:.8rem;cursor:pointer}
+.btn-sec:active{transform:scale(.98)}
+.proto-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.proto-btn{background:#0f1523;border:1px solid var(--border);color:var(--muted);padding:12px 4px;border-radius:10px;font-weight:800;font-size:.9rem;cursor:pointer;text-align:center}
+.proto-btn.active{border-color:var(--primary);background:rgba(59,130,246,.15);color:#fff}
+.proto-sub{display:block;font-size:.62rem;font-weight:500;color:var(--muted);margin-top:2px}
+.proto-help{font-size:.78rem;color:var(--muted);margin-top:10px;line-height:1.4}
+.start-btn{width:100%;background:linear-gradient(135deg,#2563eb,#10b981);border:none;color:#fff;padding:22px;border-radius:16px;font-size:1.2rem;font-weight:900;cursor:pointer;box-shadow:0 8px 25px rgba(16,185,129,.25);margin-top:4px}
+.start-btn.recording{background:linear-gradient(135deg,#dc2626,#f59e0b);animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.82}}
+.status-msg{text-align:center;font-size:.85rem;color:var(--muted);margin-top:8px;min-height:20px;font-weight:600}
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px}
+.kpi-card{background:#0f1523;border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.kpi-card.main{grid-column:span 2;border-color:var(--accent)}
+.kpi-lbl{font-size:.68rem;color:var(--muted);text-transform:uppercase;font-weight:700}
+.kpi-val{font-size:1.35rem;font-weight:800;margin-top:2px}
+.kpi-card.main .kpi-val{font-size:2rem}
+.kpi-unit{font-size:.78rem;color:var(--accent);font-weight:600}
+.kpi-sub{font-size:.7rem;color:var(--muted);margin-top:2px}
+.warn-box{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);color:#fcd34d;border-radius:10px;padding:8px 10px;font-size:.78rem;margin-bottom:10px;line-height:1.45}
+.warn-box:empty{display:none}
+canvas#oscChart{width:100%;height:240px;background:#090d16;border-radius:10px;border:1px solid var(--border);display:block}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:.7rem;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:.76rem;margin-top:8px}
+th,td{padding:7px 5px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+th{color:var(--muted);font-weight:700}
+details.card summary{cursor:pointer;font-size:.75rem;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:700;list-style:none}
+details.card summary::after{content:" ▾"}
+.set-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.note{font-size:.72rem;color:var(--muted);line-height:1.45;margin-top:8px}
+.chk{display:flex;align-items:center;gap:6px;font-size:.8rem;margin-top:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">⚡ JUMP LAB <span style="font-size:.7rem;color:var(--muted);font-weight:600">IMU lombare</span></div>
+  <div class="badge-hz" id="hzBadge">0 Hz | Inattivo</div>
+</header>
+
+<div class="profile-bar">
+  <div class="input-grp"><label>Atleta</label><input type="text" id="athName" value="Atleta 1"></div>
+  <div class="input-grp"><label>Massa (kg)</label><input type="number" id="athMass" value="75" min="30" max="180"></div>
+  <div class="input-grp"><label>Altezza (cm)</label><input type="number" id="athHeight" value="180" min="120" max="230"></div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tabBtn1" onclick="switchTab(1)">1. ESEGUI TEST</button>
+  <button class="tab-btn" id="tabBtn2" onclick="switchTab(2)">2. ANALISI &amp; GRAFICO</button>
+</div>
+
+<!-- ================= PAGINA 1 ================= -->
+<div class="page active" id="page1">
+  <div class="card">
+    <div class="card-title"><span>Sensori IMU live</span><span id="sensorSource" style="color:var(--accent)">In attesa...</span></div>
+    <div class="sensor-grid">
+      <div class="sensor-box"><h4>ACCELEROMETRO (m/s²)</h4><div class="sensor-val" id="accReadout">X: --<br>Y: --<br>Z: --</div></div>
+      <div class="sensor-box"><h4>GIROSCOPIO (°/s)</h4><div class="sensor-val" id="gyroReadout">X: --<br>Y: --<br>Z: --</div></div>
+    </div>
+    <div class="g-meter-wrap">
+      <div style="display:flex;justify-content:space-between;font-size:.8rem;font-weight:700">
+        <span>|a| · <span id="tiltText">--</span></span>
+        <span id="liveGText" style="color:var(--accent)">-- G</span>
+      </div>
+      <div class="g-bar-bg"><div class="g-bar-fill" id="liveGBar"></div></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-sec" onclick="initSensors(true)">🔓 SBLOCCA SENSORI</button>
+      <button class="btn-sec" onclick="checkPosition()">📐 VERIFICA POSIZIONE</button>
+    </div>
+    <div class="note">Il telefono può stare <b>in orizzontale o in verticale</b> (anche nella tasca di una cintura lombare): l'app riconosce da sola l'asse verticale. Conta solo che <b>non balli</b> nella tasca: se è larga, riempi lo spazio (es. un panno piegato) e stringi bene la cintura. La gravità si calibra in automatico in ogni prova, durante i secondi in cui stai fermo.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Protocollo</div>
+    <div class="proto-grid">
+      <button class="proto-btn active" data-p="CMJ" onclick="selectProto('CMJ',this)">CMJ<span class="proto-sub">Contromov.</span></button>
+      <button class="proto-btn" data-p="SJ" onclick="selectProto('SJ',this)">SJ<span class="proto-sub">Squat 90°</span></button>
+      <button class="proto-btn" data-p="DJ" onclick="selectProto('DJ',this)">DJ<span class="proto-sub">Drop Jump</span></button>
+      <button class="proto-btn" data-p="RJ" onclick="selectProto('RJ',this)">RJ-5<span class="proto-sub">5 Rimbalzi</span></button>
+    </div>
+    <div class="proto-help" id="protoHelp"></div>
+    <div id="djBoxConfig" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);align-items:center;justify-content:space-between">
+      <span style="font-size:.8rem;font-weight:700;color:var(--muted)">Altezza box (cm):</span>
+      <select id="djBoxHeight" style="background:#0f1523;color:#fff;border:1px solid var(--border);padding:6px 12px;border-radius:8px;font-weight:700">
+        <option value="20">20 cm</option><option value="30" selected>30 cm</option><option value="40">40 cm</option><option value="50">50 cm</option><option value="60">60 cm</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px">
+    <span style="font-size:.8rem;font-weight:700;color:var(--muted)">Tempo per mettere il telefono in tasca:</span>
+    <select id="setDelay" onchange="saveSettings()" style="background:#0f1523;color:#fff;border:1px solid var(--border);padding:6px 10px;border-radius:8px;font-weight:700">
+      <option value="0">0 s</option><option value="5">5 s</option><option value="10">10 s</option><option value="15">15 s</option><option value="20">20 s</option>
+    </select>
+  </div>
+  <button class="start-btn" id="mainActionBtn">AVVIA TEST</button>
+  <div class="status-msg" id="statusMsg">Premi Avvia, metti il telefono nella tasca della cintura e segui la voce.</div>
+
+  <details class="card" style="margin-top:12px">
+    <summary>Impostazioni di calcolo</summary>
+    <div class="set-grid">
+      <div class="input-grp"><label>Metodo altezza</label>
+        <select id="setMethod" onchange="saveSettings()">
+          <option value="tv">Tempo di volo (Bosco)</option>
+          <option value="v0">Velocità di stacco (impulso)</option>
+          <option value="avg">Media dei due</option>
+        </select></div>
+      <div class="input-grp"><label>Fattore correzione</label><input type="number" id="setK" step="0.01" value="1.00" onchange="saveSettings()"></div>
+    </div>
+    <label class="chk"><input type="checkbox" id="setGyro" checked onchange="saveSettings()"> Usa giroscopio per la componente verticale</label>
+    <div class="note">Lascia il fattore a <b>1.00</b> finché non hai un riferimento. Per CMJ e SJ l'app calcola l'altezza con due metodi indipendenti (tempo di volo e velocità di stacco): se differiscono di oltre il 15% compare un avviso, di solito il telefono si è mosso nella tasca.</div>
+  </details>
+
+  <details class="card">
+    <summary>Verifica senza pedana (video slow-motion)</summary>
+    <div class="note" style="margin-top:8px">Filma i piedi di lato, telecamera a terra, in <b>slow-motion</b> mentre il telefono-sensore registra il salto. Scorri il video fotogramma per fotogramma e annota il primo fotogramma con <b>entrambi i piedi staccati</b> e il primo con <b>un piede che tocca</b>. Questo metodo (lo stesso dell'app My Jump) è validato contro pedana.</div>
+    <div class="set-grid">
+      <div class="input-grp"><label>FPS video</label>
+        <select id="vidFps"><option value="120">120</option><option value="240" selected>240</option><option value="480">480</option><option value="960">960</option></select></div>
+      <div class="input-grp"><label>&nbsp;</label><span style="font-size:.72rem;color:var(--muted)">fps reali dello slow-mo, non quelli di riproduzione</span></div>
+      <div class="input-grp"><label>Fotogramma stacco</label><input type="number" id="vidF0" inputmode="numeric"></div>
+      <div class="input-grp"><label>Fotogramma atterraggio</label><input type="number" id="vidF1" inputmode="numeric"></div>
+    </div>
+    <div class="btn-row" style="margin-top:10px">
+      <button class="btn-sec" onclick="addVideoPair()">➕ CONFRONTA CON ULTIMO SALTO</button>
+      <button class="btn-sec" onclick="clearVideoPairs()">🗑 AZZERA CONFRONTI</button>
+    </div>
+    <div id="vidResult" class="note"></div>
+    <button class="btn-sec" id="vidApply" style="width:100%;margin-top:8px;display:none" onclick="applyVideoK()">APPLICA FATTORE SUGGERITO</button>
+  </details>
+</div>
+
+<!-- ================= PAGINA 2 ================= -->
+<div class="page" id="page2">
+  <div class="card">
+    <div class="card-title"><span>Risultati ultimo salto</span><span id="resProtoBadge" style="color:var(--primary)">--</span></div>
+    <div class="warn-box" id="warnBox"></div>
+    <div class="kpi-grid" id="kpiGrid"><div class="kpi-card main"><div class="kpi-lbl">Nessun salto analizzato</div><div class="kpi-val">--</div></div></div>
+    <div id="repsWrap"></div>
+    <div class="card-title" style="margin-top:8px"><span>Tracciato inerziale</span>
+      <button class="btn-sec" style="padding:4px 10px;font-size:.72rem" onclick="exportRaw()">📥 DATI GREZZI</button></div>
+    <canvas id="oscChart"></canvas>
+    <div class="legend">
+      <span><i style="background:#10b981"></i>|a| (G)</span>
+      <span><i style="background:#60a5fa"></i>Velocità vert. (m/s)</span>
+      <span><i style="background:rgba(34,211,238,.35)"></i>Volo</span>
+      <span><i style="background:rgba(148,163,184,.25)"></i>Fase ferma (calibrazione)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span>Storico</span>
+      <span style="display:flex;gap:6px">
+        <button class="btn-sec" style="padding:4px 10px;font-size:.72rem" onclick="clearHistory()">🗑</button>
+        <button class="btn-sec" style="padding:4px 10px;font-size:.72rem" onclick="exportCSV()">📥 CSV</button>
+      </span></div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>Ora</th><th>Atleta</th><th>Test</th><th>h (cm)</th><th>h TV</th><th>h V0</th><th>tv (ms)</th><th>RSI</th></tr></thead>
+        <tbody id="historyBody"><tr><td colspan="8" style="text-align:center;color:var(--muted)">Nessun salto registrato</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==ANALYSIS-START==
+/* =====================================================================
+   MOTORE DI ANALISI (funzioni pure, nessuna dipendenza dal DOM)
+   Campioni grezzi: {t: ms, ax, ay, az: m/s² (con gravità), wx, wy, wz: rad/s | null}
+   ===================================================================== */
+const G = 9.80665;
+const CFG = {
+  flightThr: 0.40,     // G: soglia per individuare il "nucleo" della fase di volo
+  edgeFrac: 0.25,      // bordi stacco/atterraggio: floor + 25% di (1G - floor), interpolati
+  mergeGap: 0.10,      // s: rimbalzi del telefono durante il volo (< 1.5 G, < 100 ms) non spezzano il volo
+  mergeMaxG: 1.5,
+  minFlightCore: 0.07, minFlight: 0.10, maxFlight: 1.0,
+  minPushG: 1.20,      // picco minimo di spinta prima dello stacco
+  minLandG: 1.30,      // picco minimo all'atterraggio
+  quietWin: 0.5,       // s: finestra di immobilità per calibrare la gravità
+  quietSD: 0.035, quietSDmax: 0.10, quietMinLead: 0.25,
+  gyroCorrK: 0.02
+};
+
+function median(arr) {
+  const a = Array.from(arr).sort((x, y) => x - y);
+  if (!a.length) return NaN;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+// media mobile centrata a 3 campioni: nessun ritardo di fase (il vecchio filtro esponenziale ritardava lo stacco)
+function smooth3(x) {
+  const n = x.length, y = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const a = x[Math.max(0, i - 1)], b = x[i], c = x[Math.min(n - 1, i + 1)];
+    y[i] = (a + b + c) / 3;
+  }
+  return y;
+}
+function idxAt(t, time) { // ultimo indice con t[i] <= time
+  let lo = 0, hi = t.length - 1;
+  if (time <= t[0]) return 0;
+  if (time >= t[hi]) return hi;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (t[m] <= time) lo = m; else hi = m; }
+  return lo;
+}
+function interpAt(t, y, time) {
+  const i = idxAt(t, time);
+  if (i >= t.length - 1) return y[i];
+  const f = (time - t[i]) / (t[i + 1] - t[i]);
+  return y[i] + f * (y[i + 1] - y[i]);
+}
+function maxIn(t, y, ta, tb) {
+  let m = -Infinity;
+  for (let i = idxAt(t, ta); i < t.length && t[i] <= tb; i++) if (y[i] > m) m = y[i];
+  return m;
+}
+
+function detectFlights(t, sm, ng) {
+  const N = sm.length, segs = [];
+  let s = -1;
+  for (let i = 0; i < N; i++) {
+    const low = sm[i] < CFG.flightThr;
+    if (low && s < 0) s = i;
+    if (s >= 0 && (!low || i === N - 1)) { segs.push([s, low ? i : i - 1]); s = -1; }
+  }
+  const merged = [];
+  for (const g of segs) {
+    const last = merged[merged.length - 1];
+    let gapMax = 0;
+    if (last) for (let j = last[1] + 1; j < g[0]; j++) gapMax = Math.max(gapMax, sm[j]);
+    if (last && t[g[0]] - t[last[1]] <= CFG.mergeGap && gapMax < CFG.mergeMaxG) last[1] = g[1];
+    else merged.push([g[0], g[1]]);
+  }
+  const flights = [];
+  for (const [i0, i1] of merged) {
+    if (i0 === 0 || i1 >= N - 1) continue; // volo incompleto nella registrazione
+    const core = t[i1] - t[i0];
+    if (core < CFG.minFlightCore || core > CFG.maxFlight) continue;
+    const floor = Math.max(0, median(sm.slice(i0, i1 + 1)));
+    const thr = Math.min(CFG.flightThr, floor + CFG.edgeFrac * (1 - floor));
+    // bordi calcolati sul segnale NON smussato (la media mobile allarga i fronti ripidi di un campione)
+    let jT = -1, jL = -1;
+    for (let j = Math.max(1, i0 - 1); j <= i1 + 1; j++) if (ng[j] < thr && ng[j - 1] >= thr) { jT = j; break; }
+    for (let j = Math.min(N - 2, i1 + 1); j >= i0 - 1; j--) if (ng[j] < thr && ng[j + 1] >= thr) { jL = j; break; }
+    if (jT < 1 || jL < 0 || jL + 1 >= N || jL < jT) continue;
+    const cross = (a, b) => t[a] + (ng[a] - thr) / (ng[a] - ng[b]) * (t[b] - t[a]);
+    const tTO = cross(jT - 1, jT);
+    const tLand = cross(jL, jL + 1);
+    const tv = tLand - tTO;
+    if (tv < CFG.minFlight || tv > CFG.maxFlight) continue;
+    // istante di stacco "fisico" (lettura ~0 G, forza al suolo nulla) per valutare la velocità di stacco:
+    // la soglia dei bordi cade nella fase di declino della spinta, dove v sta già calando
+    const coreVals = Array.from(ng.slice(i0, i1 + 1)), mad = median(coreVals.map(x => Math.abs(x - floor)));
+    const thr0 = floor + Math.max(0.06, 4 * mad);
+    let j0 = -1;
+    for (let j = Math.max(1, jT - 1); j <= i1; j++) if (ng[j] < thr0 && ng[j - 1] >= thr0) { j0 = j; break; }
+    let tTO0 = tTO;
+    if (j0 > 0) tTO0 = (t[j0 - 1] + (ng[j0 - 1] - thr0) / (ng[j0 - 1] - ng[j0]) * (t[j0] - t[j0 - 1]));
+    // atterraggio: fronte d'impatto molto ripido -> soglia a metà (0.5 G) per non anticipare di mezzo campione
+    const thrL = floor + 0.5 * (1 - floor);
+    let k0 = -1;
+    for (let j = Math.min(N - 2, jL + 2); j >= i0; j--) if (ng[j] < thrL && ng[j + 1] >= thrL) { k0 = j; break; }
+    let tLand0 = tLand;
+    if (k0 >= 0) tLand0 = (t[k0] + (ng[k0] - thrL) / (ng[k0] - ng[k0 + 1]) * (t[k0 + 1] - t[k0]));
+    const tvPhys = tLand0 - tTO0;
+    flights.push({
+      i0, i1, floor, thr, tTO: tTO0, tTO0, tLand: tLand0, tLand0, tv: tvPhys > CFG.minFlight ? tvPhys : tv,
+      pushPeak: maxIn(t, sm, tTO - 0.6, tTO),
+      landPeak: maxIn(t, sm, tLand, tLand + 0.4)
+    });
+  }
+  return flights.filter(f => f.landPeak >= CFG.minLandG);
+}
+
+function findQuiet(t, ng, iLimit) {
+  const N = ng.length, S = new Float64Array(N + 1), S2 = new Float64Array(N + 1);
+  for (let i = 0; i < N; i++) { S[i + 1] = S[i] + ng[i]; S2[i + 1] = S2[i] + ng[i] * ng[i]; }
+  let best = null, latestOk = null, ws = 0;
+  for (let e = 0; e <= Math.min(iLimit, N - 1); e++) {
+    while (t[e] - t[ws] > CFG.quietWin) ws++;
+    if (t[e] - t[ws] < CFG.quietWin * 0.9) continue;
+    const n = e - ws + 1, mean = (S[e + 1] - S[ws]) / n;
+    const sd = Math.sqrt(Math.max(0, (S2[e + 1] - S2[ws]) / n - mean * mean));
+    if (Math.abs(mean - 1) > 0.15) continue;
+    const w = { s: ws, e, sd, mean };
+    if (sd < CFG.quietSD) latestOk = w;
+    if (!best || sd < best.sd) best = w;
+  }
+  if (latestOk) {
+    // togli dalla coda della finestra l'eventuale inizio del movimento
+    let e = latestOk.e;
+    const lim = Math.max(3 * latestOk.sd, 0.015);
+    while (e > latestOk.s + 5 && Math.abs(ng[e] - latestOk.mean) > lim) e--;
+    while (e > latestOk.s + 5 && Math.abs(ng[e - 1] - latestOk.mean) > lim) e--;
+    const n = e - latestOk.s + 1, mean = (S[e + 1] - S[latestOk.s]) / n;
+    const sd = Math.sqrt(Math.max(0, (S2[e + 1] - S2[latestOk.s]) / n - mean * mean));
+    return { s: latestOk.s, e, mean, sd };
+  }
+  if (best && best.sd < CFG.quietSDmax) return Object.assign(best, { weak: true });
+  return null;
+}
+
+// Accelerazione verticale (m/s², positiva verso l'alto, gravità rimossa).
+// Con giroscopio: la direzione della gravità nel sistema del telefono viene stimata nella fase ferma
+// e poi ruotata con la velocità angolare (filtro complementare) -> compensa l'inclinazione del tronco nel CMJ.
+function verticalAccel(raw, t, nrm, q, g0, useGyro) {
+  const N = raw.length, av = new Float64Array(N), scale = G / g0;
+  for (let i = 0; i < N; i++) av[i] = nrm[i] * scale - G;
+  if (!useGyro || !q) return av;
+  let gx = 0, gy = 0, gz = 0;
+  for (let i = q.s; i <= q.e; i++) { gx += raw[i].ax; gy += raw[i].ay; gz += raw[i].az; }
+  let n = Math.hypot(gx, gy, gz); gx /= n; gy /= n; gz /= n;
+  for (let i = q.s; i < N; i++) {
+    if (i > q.s) {
+      const dt = t[i] - t[i - 1];
+      const wx = (raw[i].wx + raw[i - 1].wx) / 2, wy = (raw[i].wy + raw[i - 1].wy) / 2, wz = (raw[i].wz + raw[i - 1].wz) / 2;
+      // vettore fisso nel mondo, visto dal telefono che ruota con ω:  dg/dt = g × ω
+      const cx = gy * wz - gz * wy, cy = gz * wx - gx * wz, cz = gx * wy - gy * wx;
+      gx += cx * dt; gy += cy * dt; gz += cz * dt;
+      const r = nrm[i] / g0, wm = Math.hypot(wx, wy, wz);
+      if (Math.abs(r - 1) < 0.03 && wm < 0.5 && nrm[i] > 0) {
+        const k = CFG.gyroCorrK;
+        gx += k * (raw[i].ax / nrm[i] - gx); gy += k * (raw[i].ay / nrm[i] - gy); gz += k * (raw[i].az / nrm[i] - gz);
+      }
+      n = Math.hypot(gx, gy, gz); gx /= n; gy /= n; gz /= n;
+    }
+    av[i] = (raw[i].ax * gx + raw[i].ay * gy + raw[i].az * gz) * scale - G;
+  }
+  return av;
+}
+
+function analyzeTrial(raw, proto, opt = {}) {
+  const out = { ok: false, proto, warnings: [] };
+  const N = raw.length;
+  if (N < 40) { out.err = `Campioni insufficienti (${N}). Il sensore non sta trasmettendo.`; return out; }
+  const mass = opt.mass || 75;
+  const t = new Float64Array(N), nrm = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    t[i] = (raw[i].t - raw[0].t) / 1000;
+    nrm[i] = Math.hypot(raw[i].ax, raw[i].ay, raw[i].az);
+  }
+  out.hz = (N - 1) / (t[N - 1] || 1);
+  if (out.hz < 45) out.warnings.push(`Frequenza bassa (${out.hz.toFixed(0)} Hz): precisione ridotta.`);
+
+  // 1) normalizzazione provvisoria e ricerca voli
+  let g0 = median(nrm);
+  let ng = Array.from(nrm, v => v / g0);
+  let sm = smooth3(ng);
+  let flights = detectFlights(t, sm, ng);
+  out.minG = Math.min(...sm); out.maxG = Math.max(...sm);
+  if (!flights.length) {
+    out.err = `Nessun volo rilevato (min ${out.minG.toFixed(2)} G, max ${out.maxG.toFixed(2)} G). Il telefono deve essere ben fissato e devi eseguire un salto completo.`;
+    out.series = { t, sm }; return out;
+  }
+
+  // 2) fase ferma prima del primo stacco -> gravità reale del sensore (corregge errore di scala del telefono)
+  const iFirstTO = idxAt(t, flights[0].tTO - CFG.quietMinLead);
+  const ngProv = Array.from(nrm, v => v / g0);
+  const q = findQuiet(t, ngProv, iFirstTO);
+  if (q) {
+    g0 = g0 * q.mean;
+    ng = Array.from(nrm, v => v / g0);
+    sm = smooth3(ng);
+    flights = detectFlights(t, sm, ng);
+    if (q.weak) out.warnings.push('Fase di immobilità iniziale poco stabile: resta fermo durante il countdown.');
+  } else out.warnings.push('Nessuna fase ferma prima del salto: calcolo con velocità di stacco non disponibile.');
+  out.g0 = g0; out.quiet = q ? { t0: t[q.s], t1: t[q.e], sd: q.sd } : null;
+
+  const valid = flights.filter(f => f.pushPeak >= CFG.minPushG);
+  out.flights = flights;
+
+  // 3) giroscopio
+  const gyroPresent = raw.filter(s => s.wx !== null && s.wx !== undefined && isFinite(s.wx)).length > 0.9 * N;
+  let useGyro = opt.useGyro !== false && gyroPresent && !!q;
+  if (useGyro) {
+    let wsum = 0;
+    for (let i = q.s; i <= q.e; i++) wsum += Math.hypot(raw[i].wx, raw[i].wy, raw[i].wz);
+    if (wsum / (q.e - q.s + 1) > 0.35) { useGyro = false; out.warnings.push('Giroscopio non affidabile a riposo: uso il modulo dell\'accelerazione.'); }
+  }
+  if (gyroPresent) for (const s of raw) { if (!isFinite(s.wx)) { s.wx = 0; s.wy = 0; s.wz = 0; } }
+  out.gyroUsed = useGyro;
+  const av = verticalAccel(raw, t, nrm, q, g0, useGyro);
+
+  // 4) velocità verticale (integrazione trapezoidale dalla fine della fase ferma)
+  const v = new Float64Array(N).fill(NaN);
+  if (q) {
+    v[q.e] = 0;
+    for (let i = q.e + 1; i < N; i++) v[i] = v[i - 1] + 0.5 * (av[i] + av[i - 1]) * (t[i] - t[i - 1]);
+  }
+  out.series = { t, sm, v };
+
+  const hFromTv = tv => G * tv * tv / 8;
+  const flightInfo = f => ({ tTO: f.tTO, tLand: f.tLand, tv: f.tv, hTV: hFromTv(f.tv) });
+
+  // 5) logica per protocollo
+  if (proto === 'CMJ' || proto === 'SJ') {
+    if (!valid.length) { out.err = 'Volo rilevato ma senza una spinta valida prima dello stacco.'; return out; }
+    const main = valid.reduce((a, b) => (b.tv > a.tv ? b : a));
+    Object.assign(out, flightInfo(main));
+    if (q && main.tTO - t[q.e] > 0.15 && main.tTO - t[q.e] < 3.5) {
+      const iTO = idxAt(t, main.tTO0);
+      const v0 = interpAt(t, v, main.tTO0);
+      // inizio movimento
+      const sdQ = q.sd * G, thrOn = Math.max(0.6, 6 * sdQ);
+      let iOn = q.e;
+      for (let i = q.e + 1; i < iTO; i++) {
+        if (Math.abs(av[i]) > thrOn && Math.abs(av[i + 1]) > thrOn) {
+          iOn = i; while (iOn > q.e && Math.abs(av[iOn]) > 2 * sdQ + 0.1) iOn--; break;
+        }
+      }
+      let iVmin = iOn, vmin = 0;
+      for (let i = iOn; i <= iTO; i++) if (v[i] < vmin) { vmin = v[i]; iVmin = i; }
+      let iP0 = iOn;
+      if (vmin < -0.05) { iP0 = iVmin; while (iP0 < iTO && v[iP0] < 0) iP0++; }
+      let peakF = 0, peakP = 0;
+      for (let i = iOn; i <= iTO; i++) {
+        const F = mass * (av[i] + G);
+        if (F > peakF) peakF = F;
+        if (i >= iP0 && v[i] > 0 && F * v[i] > peakP) peakP = F * v[i];
+      }
+      out.v0 = v0; out.vmin = vmin;
+      out.tOnset = t[iOn]; out.tTotal = main.tTO0 - t[iOn];
+      out.tEcc = t[iP0] - t[iOn]; out.tProp = main.tTO0 - t[iP0];
+      out.peakF = peakF; out.peakP = peakP;
+      if (v0 > 0.5 && v0 < 5) out.hV0 = v0 * v0 / (2 * G);
+      else out.warnings.push('Velocità di stacco non plausibile: uso solo il tempo di volo.');
+      if (proto === 'SJ' && vmin < -0.10) out.warnings.push(`Contromovimento rilevato (v min ${vmin.toFixed(2)} m/s): lo SJ deve partire da fermo a 90°.`);
+      if (out.hV0 && Math.abs(out.hV0 - out.hTV) / out.hTV > 0.15)
+        out.warnings.push(`Metodi discordanti (TV ${(out.hTV * 100).toFixed(1)} cm vs V0 ${(out.hV0 * 100).toFixed(1)} cm): controlla fissaggio del telefono o atterraggio a gambe piegate.`);
+    }
+  } else if (proto === 'DJ') {
+    let pair = null;
+    for (let k = 0; k < flights.length - 1; k++) {
+      const tc = flights[k + 1].tTO0 - flights[k].tLand0;
+      if (tc > 0.08 && tc < 0.8 && flights[k + 1].pushPeak >= CFG.minPushG) { pair = [flights[k], flights[k + 1], tc]; break; }
+    }
+    if (pair) {
+      Object.assign(out, flightInfo(pair[1]));
+      out.tc = pair[2]; out.dropT = pair[0].tv;
+      out.rsi = out.hTV / out.tc;
+    } else if (valid.length) {
+      const main = valid[valid.length - 1];
+      Object.assign(out, flightInfo(main));
+      out.warnings.push('Caduta dal box non rilevata: tempo di contatto non disponibile.');
+    } else { out.err = 'Drop jump non riconosciuto.'; return out; }
+  } else if (proto === 'RJ') {
+    const reps = [];
+    for (let k = 0; k < flights.length - 1; k++) {
+      const tc = flights[k + 1].tTO0 - flights[k].tLand0;
+      if (tc > 0.08 && tc < 0.8) {
+        const f = flights[k + 1], h = hFromTv(f.tv);
+        reps.push({ tv: f.tv, hTV: h, tc, rsi: h / tc, tTO: f.tTO, tLand: f.tLand });
+      }
+    }
+    if (!reps.length) {
+      if (!valid.length) { out.err = 'Nessun rimbalzo riconosciuto.'; return out; }
+      const main = valid.reduce((a, b) => (b.tv > a.tv ? b : a));
+      Object.assign(out, flightInfo(main));
+      out.warnings.push('Nessun rimbalzo consecutivo rilevato.');
+    } else {
+      const mean = k => reps.reduce((s, r) => s + r[k], 0) / reps.length;
+      const best = reps.reduce((a, b) => (b.rsi > a.rsi ? b : a));
+      out.reps = reps;
+      out.tv = mean('tv'); out.hTV = mean('hTV'); out.tc = mean('tc'); out.rsi = mean('rsi');
+      out.bestRsi = best.rsi; out.bestH = Math.max(...reps.map(r => r.hTV));
+      out.tTO = reps[0].tTO; out.tLand = reps[reps.length - 1].tLand;
+      if (reps.length < 5) out.warnings.push(`Rilevati ${reps.length} rimbalzi su 5.`);
+    }
+  }
+  out.ok = true;
+  return out;
+}
+
+function finalHeight(res, s) { // metri
+  let h = res.hTV;
+  if (res.hV0 && s.method === 'v0') h = res.hV0;
+  else if (res.hV0 && s.method === 'avg') h = (res.hTV + res.hV0) / 2;
+  return h * (s.k || 1);
+}
+// ==ANALYSIS-END==
+
+/* =====================================================================
+   ACQUISIZIONE SENSORI (una sola sorgente attiva: niente campioni duplicati)
+   ===================================================================== */
+const st = {
+  stream: [], active: null, cnt: { dm: 0, gs: 0 }, prevCnt: 0, hz: 0, lastT: 0,
+  gyro: { x: null, y: null, z: null }, started: false,
+  recording: false, phase: 'idle', recIdx: 0, timers: [],
+  lastRaw: null, lastRes: null, lastProto: null, hist: [], audio: null
+};
+let currentProto = 'CMJ';
+const PROTO = {
+  CMJ: { rec: 2.8, help: 'In piedi, mani sui fianchi. Resta FERMO durante il countdown, poi al "Salta!" contromovimento e salto massimale. Atterra a gambe tese sullo stesso punto.' },
+  SJ:  { rec: 2.8, help: 'Scendi a 90° PRIMA del countdown e resta fermo fino al "Salta!". Spinta senza contromovimento, mani sui fianchi.' },
+  DJ:  { rec: 3.5, help: 'In piedi sul box, fermo. Al "Salta!" scendi (non saltare giù), atterra e rimbalza il più in alto possibile con il minor contatto.' },
+  RJ:  { rec: 6.5, help: 'Fermo durante il countdown. Al "Salta!" un salto e poi 5 rimbalzi consecutivi: contatti brevi, gambe rigide, mani sui fianchi.' }
+};
+
+let settings = { method: 'tv', k: 1, useGyro: true, delay: 10, vid: [] };
+function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+
+function onSample(src, t, ax, ay, az, wx, wy, wz) {
+  st.cnt[src]++;
+  if (st.active === null) st.active = src;
+  if (st.active !== src) return;
+  if (!(t > st.lastT)) t = st.lastT + 1;  // timestamp duplicati/non monotoni
+  st.lastT = t;
+  st.stream.push({ t, ax, ay, az, wx, wy, wz });
+  if (!st.recording && st.stream.length > 6000) st.stream.splice(0, st.stream.length - 3000);
+}
+
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity;
+  if (!a || a.x === null) return;
+  const r = e.rotationRate, d = Math.PI / 180;
+  let wx = null, wy = null, wz = null;
+  // rotationRate: alpha = asse Z, beta = asse X, gamma = asse Y (°/s)
+  if (r && r.alpha !== null && r.beta !== null && r.gamma !== null) { wx = r.beta * d; wy = r.gamma * d; wz = r.alpha * d; }
+  onSample('dm', e.timeStamp > 0 ? e.timeStamp : performance.now(), a.x, a.y, a.z, wx, wy, wz);
+}
+
+async function initSensors(fromUser) {
+  unlockAudio();
+  if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(() => {});
+  if (st.started) return;
+  // iOS: richiede permesso esplicito su gesto utente
+  if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
+    if (!fromUser) return;
+    try { if (await DeviceMotionEvent.requestPermission() !== 'granted') { setStatus('Permesso sensori negato.'); return; } } catch (e) { return; }
+  }
+  st.started = true;
+  window.addEventListener('devicemotion', onMotion, true);
+  try {
+    if ('Accelerometer' in window && 'Gyroscope' in window) {
+      const acc = new Accelerometer({ frequency: 120 });
+      const gyr = new Gyroscope({ frequency: 120 });
+      gyr.addEventListener('reading', () => { st.gyro = { x: gyr.x, y: gyr.y, z: gyr.z }; });
+      acc.addEventListener('reading', () => onSample('gs', acc.timestamp || performance.now(), acc.x, acc.y, acc.z, st.gyro.x, st.gyro.y, st.gyro.z));
+      acc.addEventListener('error', () => {}); gyr.addEventListener('error', () => {});
+      gyr.start(); acc.start();
+    }
+  } catch (e) {}
+  // dopo 1.5 s scegli la sorgente con frequenza maggiore
+  setTimeout(() => {
+    const pick = (st.cnt.gs > st.cnt.dm * 1.15 && st.cnt.gs > 30) ? 'gs' : (st.cnt.dm > 0 ? 'dm' : (st.cnt.gs > 0 ? 'gs' : null));
+    if (pick && pick !== st.active) { st.active = pick; st.stream = []; st.lastT = 0; }
+    st.prevCnt = pick ? st.cnt[pick] : 0;
+    document.getElementById('sensorSource').textContent = pick === 'gs' ? 'Generic Sensor API' : pick === 'dm' ? 'DeviceMotion' : 'Nessun sensore';
+  }, 1500);
+}
+
+setInterval(() => {
+  if (!st.active) return;
+  st.hz = st.cnt[st.active] - st.prevCnt;
+  st.prevCnt = st.cnt[st.active];
+  document.getElementById('hzBadge').textContent = st.hz ? `${st.hz} Hz | ${st.recording ? 'REC' : 'Attivo'}` : '0 Hz | Inattivo';
+}, 1000);
+
+function uiLoop() {
+  const s = st.stream[st.stream.length - 1];
+  if (s) {
+    const n = Math.hypot(s.ax, s.ay, s.az);
+    document.getElementById('accReadout').innerHTML = `X: ${s.ax.toFixed(2)}<br>Y: ${s.ay.toFixed(2)}<br>Z: ${s.az.toFixed(2)}`;
+    const dg = 180 / Math.PI;
+    document.getElementById('gyroReadout').innerHTML = s.wx === null ? 'non disponibile' :
+      `X: ${(s.wx * dg).toFixed(1)}<br>Y: ${(s.wy * dg).toFixed(1)}<br>Z: ${(s.wz * dg).toFixed(1)}`;
+    const g = n / G;
+    document.getElementById('liveGText').textContent = `${g.toFixed(2)} G`;
+    document.getElementById('liveGBar').style.width = `${Math.min(100, Math.max(2, g / 4 * 100))}%`;
+    const o = orientationInfo(s.ax, s.ay, s.az);
+    document.getElementById('tiltText').textContent = `${o.label} · incl. ${o.tilt.toFixed(0)}°`;
+  }
+  setTimeout(() => requestAnimationFrame(uiLoop), 80); // UI a ~12 fps, non rallenta l'acquisizione
+}
+requestAnimationFrame(uiLoop);
+
+// asse del telefono più allineato alla verticale: Y = in piedi (portrait), X = orizzontale (landscape)
+function orientationInfo(ax, ay, az) {
+  const n = Math.hypot(ax, ay, az) || 1, ux = Math.abs(ax) / n, uy = Math.abs(ay) / n, uz = Math.abs(az) / n;
+  const m = Math.max(ux, uy, uz);
+  const label = m === uy ? 'verticale' : m === ux ? 'orizzontale' : 'piatto';
+  return { label, tilt: Math.acos(Math.min(1, m)) * 180 / Math.PI };
+}
+function checkPosition() {
+  initSensors(true);
+  const now = st.lastT, w = st.stream.filter(s => s.t > now - 1000);
+  if (w.length < 20) { setStatus('Sensori non attivi: premi SBLOCCA SENSORI.'); return; }
+  const n = w.map(s => Math.hypot(s.ax, s.ay, s.az));
+  const m = n.reduce((a, b) => a + b, 0) / n.length;
+  const sd = Math.sqrt(n.reduce((a, b) => a + (b - m) ** 2, 0) / n.length) / G;
+  const mean = k => w.reduce((a, s) => a + s[k], 0) / w.length;
+  const o = orientationInfo(mean('ax'), mean('ay'), mean('az'));
+  let msg = `Telefono ${o.label}, inclinazione ${o.tilt.toFixed(0)}° · gravità letta ${m.toFixed(2)} m/s² · rumore ${(sd * 1000).toFixed(0)} mG. `;
+  msg += o.label === 'piatto' ? '⚠️ Telefono appoggiato piatto: deve stare in piedi contro la schiena.' : o.tilt > 30 ? '⚠️ Telefono molto inclinato nella tasca: raddrizzalo.' : sd > 0.03 ? '⚠️ Troppo movimento: resta fermo/stringi la cintura.' : '✅ Posizione OK.';
+  setStatus(msg);
+}
+
+/* =====================================================================
+   FEEDBACK AUDIO
+   ===================================================================== */
+function unlockAudio() {
+  try { if (!st.audio) st.audio = new (window.AudioContext || window.webkitAudioContext)(); if (st.audio.state === 'suspended') st.audio.resume(); } catch (e) {}
+}
+function cue(text, freq = 880, dur = 120, vib = 80) {
+  if (navigator.vibrate && vib) navigator.vibrate(vib);
+  try {
+    const ctx = st.audio; if (ctx) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = freq; g.gain.value = 0.2; o.connect(g); g.connect(ctx.destination);
+      o.start(); o.stop(ctx.currentTime + dur / 1000);
+    }
+  } catch (e) {}
+  if (text && 'speechSynthesis' in window) {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text); u.lang = 'it-IT'; u.rate = 1.15; speechSynthesis.speak(u);
+  }
+}
+function setStatus(m) { document.getElementById('statusMsg').textContent = m; }
+
+/* =====================================================================
+   UI E FLUSSO TEST
+   ===================================================================== */
+function switchTab(n) {
+  [1, 2].forEach(i => {
+    document.getElementById('page' + i).classList.toggle('active', i === n);
+    document.getElementById('tabBtn' + i).classList.toggle('active', i === n);
+  });
+  if (n === 2) requestAnimationFrame(() => drawChart());
+}
+function selectProto(p, el) {
+  currentProto = p;
+  document.querySelectorAll('.proto-btn').forEach(b => b.classList.toggle('active', b === el));
+  document.getElementById('djBoxConfig').style.display = p === 'DJ' ? 'flex' : 'none';
+  document.getElementById('protoHelp').textContent = PROTO[p].help;
+}
+
+function later(fn, ms) { st.timers.push(setTimeout(fn, ms)); }
+function cancelTimers() { st.timers.forEach(clearTimeout); st.timers = []; }
+
+// Durante il test il pulsante risponde solo a una PRESSIONE LUNGA (1 s):
+// in tasca lo schermo può ricevere tocchi accidentali dal corpo.
+function setupMainButton() {
+  const btn = document.getElementById('mainActionBtn');
+  let holdT = null;
+  btn.addEventListener('click', () => {
+    if (st.phase === 'idle') handleMainAction();
+    else setStatus('Tieni premuto 1 secondo per ' + (st.phase === 'jump' ? 'fermare.' : 'annullare.'));
+  });
+  btn.addEventListener('pointerdown', () => {
+    if (st.phase === 'idle') return;
+    holdT = setTimeout(() => {
+      if (navigator.vibrate) navigator.vibrate(60);
+      if (st.phase === 'jump') finishTrial(); else abortTrial();
+    }, 1000);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, () => clearTimeout(holdT)));
+}
+function abortTrial() {
+  cancelTimers(); st.recording = false; st.phase = 'idle';
+  const btn = document.getElementById('mainActionBtn');
+  btn.classList.remove('recording'); btn.textContent = 'AVVIA TEST'; setStatus('Test annullato.');
+}
+
+async function handleMainAction() {
+  const btn = document.getElementById('mainActionBtn');
+  await initSensors(true);
+  if (!st.stream.length) { setStatus('In attesa dei sensori...'); await new Promise(r => setTimeout(r, 1600)); }
+  if (!st.stream.length) { setStatus('❌ Nessun dato dai sensori. Usa Chrome su Android con la pagina in HTTPS.'); return; }
+
+  st.phase = 'countdown';
+  btn.textContent = 'IN CORSO (tieni premuto per annullare)'; btn.classList.add('recording');
+  const p = currentProto, delay = (settings.delay || 0) * 1000;
+  if (delay) {
+    cue(`Metti il telefono in tasca. ${settings.delay} secondi`, 500, 100, 50);
+    setStatus(`Inserisci il telefono nella cintura (${settings.delay} s)...`);
+    for (let k = 3; k >= 1; k--) if (delay - k * 1000 > 2500) later(() => cue('', 440, 60, 30), delay - k * 1000);
+  }
+  later(() => {
+    // la registrazione parte solo dopo l'inserimento in tasca
+    st.recording = true;
+    st.recIdx = st.stream.length;
+    cue(p === 'SJ' ? 'Scendi a novanta e fermo' : 'Posizione. Fermo', 500, 100, 50);
+    setStatus('Resta FERMO: calibrazione gravità...');
+    [['Tre', 2000], ['Due', 3000], ['Uno', 4000]].forEach(([w, ms], i) => later(() => { cue(w, 600, 90, 50); setStatus(`Fermo... ${3 - i}`); }, ms));
+    later(() => {
+      st.phase = 'jump';
+      setStatus('Acquisizione in corso...');
+      cue('', 1200, 220, 150);
+      later(finishTrial, PROTO[p].rec * 1000);
+    }, 5000);
+  }, delay);
+}
+
+function finishTrial() {
+  cancelTimers();
+  const btn = document.getElementById('mainActionBtn');
+  btn.classList.remove('recording'); btn.textContent = 'AVVIA TEST';
+  st.phase = 'idle';
+  const raw = st.stream.slice(st.recIdx).map(s => Object.assign({}, s));
+  st.recording = false;
+  st.lastRaw = raw; st.lastProto = currentProto;
+  const res = analyzeTrial(raw.map(s => Object.assign({}, s)), currentProto, { mass: getMass(), useGyro: settings.useGyro });
+  st.lastRes = res;
+  if (!res.ok) {
+    setStatus('⚠️ ' + res.err);
+    cue('Salto non rilevato', 320, 200, 100);
+    renderResult(); return;
+  }
+  const rec = {
+    id: Date.now(), time: new Date().toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+    athlete: document.getElementById('athName').value.trim() || 'Atleta', mass: getMass(), proto: currentProto,
+    box: currentProto === 'DJ' ? +document.getElementById('djBoxHeight').value : null,
+    hTV: res.hTV, hV0: res.hV0 || null, tv: res.tv, v0: res.v0 || null, peakF: res.peakF || null, peakP: res.peakP || null,
+    tc: res.tc || null, rsi: res.rsi || null, tTotal: res.tTotal || null, hz: res.hz, gyro: res.gyroUsed
+  };
+  st.hist.unshift(rec); lsSet('jumplab_hist_v2', st.hist);
+  const h = finalHeight(res, settings) * 100;
+  cue(`${Math.round(h)} centimetri`, 980, 150, 100);
+  setStatus(`✅ ${currentProto}: ${h.toFixed(1)} cm`);
+  renderResult(); renderHistory();
+  switchTab(2);
+}
+
+function getMass() { return parseFloat(document.getElementById('athMass').value) || 75; }
+const f1 = (x, d = 1) => (x === null || x === undefined || !isFinite(x)) ? '--' : x.toFixed(d);
+
+function boscoIndex(athlete) {
+  const mine = st.hist.filter(r => r.athlete === athlete);
+  const best = p => Math.max(0, ...mine.filter(r => r.proto === p).map(r => finalHeight(r, settings)));
+  const c = best('CMJ'), s = best('SJ');
+  return c && s ? (c - s) / s * 100 : null;
+}
+
+function renderResult() {
+  const res = st.lastRes, grid = document.getElementById('kpiGrid');
+  document.getElementById('resProtoBadge').textContent = res ? (res.ok ? `${res.proto} · ${res.hz.toFixed(0)} Hz${res.gyroUsed ? ' · gyro' : ''}` : 'non valido') : '--';
+  document.getElementById('warnBox').innerHTML = res ? (res.ok ? res.warnings : [res.err, ...res.warnings]).map(w => '⚠️ ' + w).join('<br>') : '';
+  document.getElementById('repsWrap').innerHTML = '';
+  if (!res || !res.ok) { grid.innerHTML = '<div class="kpi-card main"><div class="kpi-lbl">Nessun salto valido</div><div class="kpi-val">--</div></div>'; drawChart(); return; }
+  const mass = getMass(), hF = finalHeight(res, settings), hcm = hF * 100;
+  const sayers = Math.max(0, 60.7 * hcm + 45.3 * mass - 2055);
+  const k = [];
+  const card = (lbl, val, unit, sub = '', main = false) => k.push(`<div class="kpi-card${main ? ' main' : ''}"><div class="kpi-lbl">${lbl}</div><div class="kpi-val">${val} <span class="kpi-unit">${unit}</span></div>${sub ? `<div class="kpi-sub">${sub}</div>` : ''}</div>`);
+  const methodLbl = { tv: 'tempo di volo', v0: 'velocità di stacco', avg: 'media metodi' }[res.hV0 ? settings.method : 'tv'];
+  card(res.proto === 'RJ' && res.reps ? 'Altezza media rimbalzi' : 'Altezza salto', f1(hcm), 'cm',
+    `Metodo: ${methodLbl}${settings.k !== 1 ? ` · ×${settings.k}` : ''} — TV ${f1(res.hTV * 100)} cm · V0 ${res.hV0 ? f1(res.hV0 * 100) + ' cm' : 'n/d'}`, true);
+  card('Tempo di volo', Math.round(res.tv * 1000), 'ms');
+  card('Velocità stacco', f1(res.v0 || G * res.tv / 2, 2), 'm/s', res.v0 ? 'da integrazione' : 'da tempo di volo');
+  if (res.proto === 'DJ' || res.proto === 'RJ') {
+    card('RSI', f1(res.rsi, 2), 'm/s', res.bestRsi ? `migliore ${f1(res.bestRsi, 2)}` : '');
+    card('Tempo di contatto', res.tc ? Math.round(res.tc * 1000) : '--', 'ms', res.dropT ? `caduta ${Math.round(res.dropT * 1000)} ms` : '');
+    card('Potenza (Sayers)', f1(sayers / mass), 'W/kg');
+    if (res.bestH) card('Rimbalzo migliore', f1(res.bestH * 100 * settings.k), 'cm');
+  } else {
+    card('Potenza picco', res.peakP ? f1(res.peakP / mass) : f1(sayers / mass), 'W/kg', res.peakP ? `F·v · Sayers ${f1(sayers / mass)}` : 'stima Sayers');
+    card('Forza picco spinta', res.peakF ? Math.round(res.peakF) : '--', 'N', res.peakF ? `${f1(res.peakF / (mass * G), 2)} × peso` : '');
+    card('RSI modificato', res.tTotal ? f1(hF / res.tTotal, 2) : '--', 'm/s', res.tTotal ? `tempo allo stacco ${Math.round(res.tTotal * 1000)} ms` : '');
+    card('Fasi', res.tEcc !== undefined ? `${Math.round(res.tEcc * 1000)}/${Math.round(res.tProp * 1000)}` : '--', 'ms', 'contromov. / propulsiva');
+  }
+  const ie = boscoIndex(document.getElementById('athName').value.trim() || 'Atleta');
+  card('Indice elastico Bosco', ie === null ? '--' : f1(ie), '%', 'migliore CMJ vs SJ dell\'atleta');
+  grid.innerHTML = k.join('');
+  if (res.reps) {
+    document.getElementById('repsWrap').innerHTML = `<table><thead><tr><th>#</th><th>h (cm)</th><th>tv (ms)</th><th>tc (ms)</th><th>RSI</th></tr></thead><tbody>${res.reps.map((r, i) => `<tr><td>${i + 1}</td><td>${f1(r.hTV * 100 * settings.k)}</td><td>${Math.round(r.tv * 1000)}</td><td>${Math.round(r.tc * 1000)}</td><td>${f1(r.rsi, 2)}</td></tr>`).join('')}</tbody></table>`;
+  }
+  drawChart();
+}
+
+function drawChart() {
+  const c = document.getElementById('oscChart'); if (!c || !c.clientWidth) return;
+  const dpr = window.devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  c.width = W * dpr; c.height = H * dpr;
+  const ctx = c.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const res = st.lastRes;
+  const L = 34, R = 34, T = 10, B = 22;
+  if (!res || !res.series) { ctx.fillStyle = '#94a3b8'; ctx.font = '13px sans-serif'; ctx.fillText('Esegui un salto per vedere il tracciato.', L, H / 2); return; }
+  const { t, sm, v } = res.series;
+  let ta = res.quiet ? res.quiet.t0 - 0.2 : 0, tb = t[t.length - 1];
+  if (res.flights && res.flights.length) tb = Math.min(tb, res.flights[res.flights.length - 1].tLand + 0.7);
+  ta = Math.max(0, ta);
+  let gMax = 3; for (let i = 0; i < t.length; i++) if (t[i] >= ta && t[i] <= tb) gMax = Math.max(gMax, sm[i]);
+  gMax = Math.min(8, Math.ceil(gMax));
+  const X = tt => L + (tt - ta) / (tb - ta) * (W - L - R);
+  const Yg = g => T + (1 - (g + 0.5) / (gMax + 0.5)) * (H - T - B);
+  const vMin = -3, vMax = 4, Yv = vv => T + (1 - (vv - vMin) / (vMax - vMin)) * (H - T - B);
+  ctx.font = '10px monospace';
+  for (let g = 0; g <= gMax; g++) {
+    ctx.strokeStyle = g === 1 ? '#334155' : '#1e293b'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(L, Yg(g)); ctx.lineTo(W - R, Yg(g)); ctx.stroke();
+    ctx.fillStyle = '#64748b'; ctx.fillText(g + 'G', 4, Yg(g) + 3);
+  }
+  if (v) for (let vv = -2; vv <= 4; vv += 2) { ctx.fillStyle = '#60a5fa'; ctx.fillText(vv, W - R + 6, Yv(vv) + 3); }
+  for (let s = Math.ceil(ta * 2) / 2; s <= tb; s += 0.5) { ctx.fillStyle = '#475569'; ctx.fillText(s.toFixed(1) + 's', X(s) - 10, H - 6); }
+  if (res.quiet) { ctx.fillStyle = 'rgba(148,163,184,.15)'; ctx.fillRect(X(res.quiet.t0), T, X(res.quiet.t1) - X(res.quiet.t0), H - T - B); }
+  (res.flights || []).forEach(f => {
+    ctx.fillStyle = 'rgba(34,211,238,.18)'; ctx.fillRect(X(f.tTO), T, X(f.tLand) - X(f.tTO), H - T - B);
+    ctx.fillStyle = '#22d3ee'; ctx.fillText(Math.round(f.tv * 1000) + 'ms', X(f.tTO) + 2, T + 10);
+  });
+  const line = (ys, color, w) => {
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = w; let first = true;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] < ta || t[i] > tb || !isFinite(ys[i])) { continue; }
+      if (first) { ctx.moveTo(X(t[i]), ys === sm ? Yg(sm[i]) : Yv(ys[i])); first = false; }
+      else ctx.lineTo(X(t[i]), ys === sm ? Yg(sm[i]) : Yv(ys[i]));
+    }
+    ctx.stroke();
+  };
+  if (v) { ctx.save(); ctx.beginPath(); ctx.rect(L, T, W - L - R, H - T - B); ctx.clip(); line(v, '#60a5fa', 1.5); ctx.restore(); }
+  line(sm, '#10b981', 2);
+}
+
+function renderHistory() {
+  const tb = document.getElementById('historyBody');
+  if (!st.hist.length) { tb.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted)">Nessun salto registrato</td></tr>'; return; }
+  tb.innerHTML = st.hist.map(r => `<tr><td>${r.time}</td><td>${r.athlete}</td><td><b>${r.proto}</b></td>
+    <td style="color:var(--accent);font-weight:700">${f1(finalHeight(r, settings) * 100)}</td>
+    <td>${f1(r.hTV * 100)}</td><td>${r.hV0 ? f1(r.hV0 * 100) : '--'}</td><td>${Math.round(r.tv * 1000)}</td><td>${r.rsi ? f1(r.rsi, 2) : (r.tTotal ? f1(finalHeight(r, settings) / r.tTotal, 2) : '--')}</td></tr>`).join('');
+}
+function clearHistory() { if (!confirm('Cancellare tutto lo storico?')) return; st.hist = []; lsSet('jumplab_hist_v2', []); renderHistory(); }
+
+function download(name, text) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' })); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function exportCSV() {
+  if (!st.hist.length) return;
+  let csv = 'Ora;Atleta;Massa_kg;Protocollo;Box_cm;Altezza_cm;h_TV_cm;h_V0_cm;TempoVolo_ms;V0_ms;ForzaPicco_N;PotenzaPicco_Wkg;Contatto_ms;RSI;TempoStacco_ms;Hz;Giroscopio\n';
+  const n = (x, d) => (x === null || x === undefined) ? '' : x.toFixed(d).replace('.', ',');
+  st.hist.forEach(r => {
+    csv += [r.time, r.athlete, r.mass, r.proto, r.box || '', n(finalHeight(r, settings) * 100, 1), n(r.hTV * 100, 1), n(r.hV0 && r.hV0 * 100, 1),
+      Math.round(r.tv * 1000), n(r.v0, 2), r.peakF ? Math.round(r.peakF) : '', n(r.peakP && r.peakP / r.mass, 1),
+      r.tc ? Math.round(r.tc * 1000) : '', n(r.rsi, 2), r.tTotal ? Math.round(r.tTotal * 1000) : '', Math.round(r.hz), r.gyro ? 'si' : 'no'].join(';') + '\n';
+  });
+  download('jump_lab_sessione.csv', csv);
+}
+function exportRaw() {
+  if (!st.lastRaw || !st.lastRaw.length) return;
+  const t0 = st.lastRaw[0].t;
+  let csv = 't_ms,ax,ay,az,wx_rad_s,wy_rad_s,wz_rad_s\n';
+  st.lastRaw.forEach(s => { csv += [(s.t - t0).toFixed(2), s.ax, s.ay, s.az, s.wx, s.wy, s.wz].join(',') + '\n'; });
+  download(`jump_lab_raw_${st.lastProto}_${Date.now()}.csv`, csv);
+}
+
+/* ---------- Verifica con video slow-motion ---------- */
+function videoSummary() {
+  const pairs = settings.vid || [], box = document.getElementById('vidResult'), ap = document.getElementById('vidApply');
+  if (!pairs.length) { box.innerHTML = ''; ap.style.display = 'none'; return; }
+  const sa = pairs.reduce((a, p) => a + p.app, 0), sv = pairs.reduce((a, p) => a + p.video, 0);
+  const k = sv / sa, diffs = pairs.map(p => (p.app - p.video) * 100);
+  const md = diffs.reduce((a, b) => a + b, 0) / diffs.length;
+  const sdd = Math.sqrt(diffs.reduce((a, b) => a + (b - md) ** 2, 0) / Math.max(1, diffs.length - 1));
+  box.innerHTML = pairs.map((p, i) => `#${i + 1}: video ${(p.video * 100).toFixed(1)} cm · app ${(p.app * 100).toFixed(1)} cm (${((p.app - p.video) * 100).toFixed(1)})`).join('<br>') +
+    `<br><b>Scarto medio app−video: ${md.toFixed(1)} ± ${sdd.toFixed(1)} cm</b> su ${pairs.length} salti · fattore suggerito ×${k.toFixed(3)}` +
+    (pairs.length < 5 ? '<br>Servono almeno 5 confronti prima di applicare il fattore.' : '');
+  ap.style.display = pairs.length >= 5 ? 'block' : 'none';
+  ap.dataset.k = k.toFixed(3);
+}
+function addVideoPair() {
+  const fps = +document.getElementById('vidFps').value, f0 = +document.getElementById('vidF0').value, f1 = +document.getElementById('vidF1').value;
+  const r = st.lastRes;
+  if (!r || !r.ok || !r.hTV) { document.getElementById('vidResult').textContent = 'Prima registra un salto valido con l\'app.'; return; }
+  if (!(f1 > f0)) { document.getElementById('vidResult').textContent = 'Inserisci i due fotogrammi (atterraggio > stacco).'; return; }
+  const tv = (f1 - f0) / fps;
+  if (tv < 0.15 || tv > 1) { document.getElementById('vidResult').textContent = `Tempo di volo video ${Math.round(tv * 1000)} ms non plausibile: controlla fps e fotogrammi.`; return; }
+  settings.vid = settings.vid || [];
+  settings.vid.push({ video: G * tv * tv / 8, app: r.hTV, tvVideo: tv, tvApp: r.tv });
+  lsSet('jumplab_settings_v2', settings);
+  document.getElementById('vidF0').value = ''; document.getElementById('vidF1').value = '';
+  videoSummary();
+}
+function clearVideoPairs() { settings.vid = []; lsSet('jumplab_settings_v2', settings); videoSummary(); }
+function applyVideoK() {
+  document.getElementById('setK').value = document.getElementById('vidApply').dataset.k;
+  document.getElementById('setMethod').value = 'tv';
+  saveSettings();
+}
+
+function saveSettings() {
+  settings.method = document.getElementById('setMethod').value;
+  settings.k = parseFloat(document.getElementById('setK').value) || 1;
+  settings.delay = +document.getElementById('setDelay').value;
+  const g = document.getElementById('setGyro').checked;
+  const gyroChanged = g !== settings.useGyro; settings.useGyro = g;
+  lsSet('jumplab_settings_v2', settings);
+  if (gyroChanged && st.lastRaw) st.lastRes = analyzeTrial(st.lastRaw.map(s => Object.assign({}, s)), st.lastProto, { mass: getMass(), useGyro: g });
+  renderResult(); renderHistory();
+}
+
+window.addEventListener('load', () => {
+  settings = Object.assign(settings, lsGet('jumplab_settings_v2', {}));
+  document.getElementById('setMethod').value = settings.method;
+  document.getElementById('setK').value = settings.k.toFixed(2);
+  document.getElementById('setGyro').checked = settings.useGyro;
+  document.getElementById('setDelay').value = String(settings.delay);
+  setupMainButton();
+  videoSummary();
+  st.hist = lsGet('jumplab_hist_v2', []);
+  renderHistory();
+  selectProto('CMJ', document.querySelector('.proto-btn[data-p="CMJ"]'));
+  initSensors(false);
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+});
+window.addEventListener('resize', () => drawChart());
+</script>
+</body>
+</html>
