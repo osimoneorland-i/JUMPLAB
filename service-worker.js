@@ -1,5 +1,5 @@
 // v2: cambiare il nome della cache forza l'aggiornamento dell'app installata
-const CACHE_NAME = 'jumplab-v4';
+const CACHE_NAME = 'jumplab-v5';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

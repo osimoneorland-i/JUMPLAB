@@ -178,7 +178,7 @@ details.card summary::after{content:" ▾"}
       <button class="btn-sec" style="padding:4px 10px;font-size:.72rem" onclick="exportRaw()">📥 DATI GREZZI</button></div>
     <canvas id="oscChart"></canvas>
     <div class="legend">
-      <span><i style="background:#10b981"></i>|a| (G)</span>
+      <span><i style="background:#10b981"></i>Acc. verticale (G)</span>
       <span><i style="background:#60a5fa"></i>Velocità vert. (m/s)</span>
       <span><i style="background:rgba(34,211,238,.35)"></i>Volo</span>
       <span><i style="background:rgba(148,163,184,.25)"></i>Fase ferma (calibrazione)</span>
@@ -208,15 +208,16 @@ details.card summary::after{content:" ▾"}
    ===================================================================== */
 const G = 9.80665;
 const CFG = {
-  flightThr: 0.40,     // G: soglia per individuare il "nucleo" della fase di volo
-  edgeFrac: 0.25,      // bordi stacco/atterraggio: floor + 25% di (1G - floor), interpolati
-  mergeGap: 0.10,      // s: rimbalzi del telefono durante il volo (< 1.5 G, < 100 ms) non spezzano il volo
-  mergeMaxG: 1.5,
-  minFlightCore: 0.07, minFlight: 0.10, maxFlight: 1.0,
+  coreThr: 0.35,       // G: media mobile (±50 ms) della componente verticale sotto cui si è sicuramente in volo
+  groundThr: 0.90,     // G: media mobile sopra cui si è sicuramente in appoggio
+  toThr: 0.30,         // G: soglia stacco sul segnale grezzo (il crollo allo stacco è netto)
+  landThr: 0.50,       // G: soglia atterraggio sul segnale grezzo (fronte d'impatto ripido)
+  mergeGap: 0.10,
+  minFlightCore: 0.06, minFlight: 0.10, maxFlight: 1.0,
   minPushG: 1.20,      // picco minimo di spinta prima dello stacco
   minLandG: 1.30,      // picco minimo all'atterraggio
   quietWin: 0.5,       // s: finestra di immobilità per calibrare la gravità
-  quietSD: 0.035, quietSDmax: 0.10, quietMinLead: 0.25,
+  quietSD: 0.035, quietSDmax: 0.10, quietMinLead: 0.3,
   gyroCorrK: 0.02
 };
 
@@ -254,69 +255,54 @@ function maxIn(t, y, ta, tb) {
   return m;
 }
 
-function median5(x) {
+// Rilevamento voli sull'accelerazione VERTICALE CON SEGNO (proiezione sulla gravità della fase ferma), in G.
+// Dati reali in cintura: subito dopo lo stacco il telefono "sbatte" nella tasca (picchi 1-2 G di segno alterno).
+// Il modulo |a| li raddrizza e li scambia per appoggio; la componente con segno e la sua media mobile invece si annullano.
+function movAvg(x, half) {
   const n = x.length, y = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    const w = []; for (let k = -2; k <= 2; k++) w.push(x[Math.min(n - 1, Math.max(0, i + k))]);
-    w.sort((a, b) => a - b); y[i] = w[2];
-  }
+  for (let i = 0; i < n; i++) { let a = 0, c = 0; for (let k = -half; k <= half; k++) { const j = i + k; if (j >= 0 && j < n) { a += x[j]; c++; } } y[i] = a / c; }
   return y;
 }
-function detectFlights(t, sm, ng, mp = {}) {
-  const N = sm.length, segs = [];
-  const mergeGap = mp.gap || CFG.mergeGap, mergeMaxG = mp.maxG || CFG.mergeMaxG;
-  // nucleo del volo su filtro mediano: elimina i colpi brevi del telefono nella tasca
-  const md = median5(ng);
+function detectFlights(t, sv, hz) {
+  const N = sv.length, half = Math.max(2, Math.round(0.05 * hz));
+  const ma = movAvg(sv, half);
+  const segs = [];
   let s = -1;
   for (let i = 0; i < N; i++) {
-    const low = md[i] < CFG.flightThr;
+    const low = ma[i] < CFG.coreThr;
     if (low && s < 0) s = i;
     if (s >= 0 && (!low || i === N - 1)) { segs.push([s, low ? i : i - 1]); s = -1; }
   }
   const merged = [];
   for (const g of segs) {
     const last = merged[merged.length - 1];
-    let gapMax = 0;
-    if (last) for (let j = last[1] + 1; j < g[0]; j++) gapMax = Math.max(gapMax, sm[j]);
-    if (last && t[g[0]] - t[last[1]] <= mergeGap && gapMax < mergeMaxG) last[1] = g[1];
+    let gapMax = -Infinity;
+    if (last) for (let j = last[1] + 1; j < g[0]; j++) gapMax = Math.max(gapMax, ma[j]);
+    if (last && t[g[0]] - t[last[1]] <= CFG.mergeGap && gapMax < CFG.groundThr) last[1] = g[1];
     else merged.push([g[0], g[1]]);
   }
+  const cross = (a, b, th) => t[a] + (sv[a] - th) / (sv[a] - sv[b]) * (t[b] - t[a]);
   const flights = [];
   for (const [i0, i1] of merged) {
-    if (i0 === 0 || i1 >= N - 1) continue; // volo incompleto nella registrazione
-    const core = t[i1] - t[i0];
-    if (core < CFG.minFlightCore || core > CFG.maxFlight) continue;
-    const floor = Math.max(0, median(sm.slice(i0, i1 + 1)));
-    const thr = Math.min(CFG.flightThr, floor + CFG.edgeFrac * (1 - floor));
-    // bordi calcolati sul segnale NON smussato (la media mobile allarga i fronti ripidi di un campione)
-    let jT = -1, jL = -1;
-    for (let j = Math.max(1, i0 - 1); j <= i1 + 1; j++) if (ng[j] < thr && ng[j - 1] >= thr) { jT = j; break; }
-    for (let j = Math.min(N - 2, i1 + 1); j >= i0 - 1; j--) if (ng[j] < thr && ng[j + 1] >= thr) { jL = j; break; }
-    if (jT < 1 || jL < 0 || jL + 1 >= N || jL < jT) continue;
-    const cross = (a, b) => t[a] + (ng[a] - thr) / (ng[a] - ng[b]) * (t[b] - t[a]);
-    const tTO = cross(jT - 1, jT);
-    const tLand = cross(jL, jL + 1);
-    const tv = tLand - tTO;
+    if (i0 === 0 || i1 >= N - 1) continue;
+    if (t[i1] - t[i0] < CFG.minFlightCore || t[i1] - t[i0] > CFG.maxFlight) continue;
+    // ultimo appoggio prima del volo e primo dopo
+    let P = i0; while (P > 0 && ma[P] < CFG.groundThr) P--;
+    let L = i1; while (L < N - 1 && ma[L] < CFG.groundThr) L++;
+    if (P === 0 || L === N - 1) continue;
+    // stacco: prima discesa del segnale grezzo sotto soglia dopo l'ultimo appoggio
+    let jT = -1;
+    for (let j = Math.max(1, P - half); j <= i1; j++) if (sv[j] < CFG.toThr && sv[j - 1] >= CFG.toThr) { jT = j; break; }
+    // atterraggio: prima risalita sopra soglia dopo la parte finale (pulita) del volo
+    let jL = -1;
+    for (let j = Math.max(i0, i1 - half); j <= Math.min(N - 2, L + half); j++) if (sv[j] < CFG.landThr && sv[j + 1] >= CFG.landThr) { jL = j; break; }
+    if (jT < 1 || jL < jT) continue;
+    const tTO = cross(jT - 1, jT, CFG.toThr), tLand = cross(jL, jL + 1, CFG.landThr), tv = tLand - tTO;
     if (tv < CFG.minFlight || tv > CFG.maxFlight) continue;
-    // istante di stacco "fisico" (lettura ~0 G, forza al suolo nulla) per valutare la velocità di stacco:
-    // la soglia dei bordi cade nella fase di declino della spinta, dove v sta già calando
-    const coreVals = Array.from(ng.slice(i0, i1 + 1)), mad = median(coreVals.map(x => Math.abs(x - floor)));
-    const thr0 = floor + Math.max(0.06, 4 * mad);
-    let j0 = -1;
-    for (let j = Math.max(1, jT - 1); j <= i1; j++) if (ng[j] < thr0 && ng[j - 1] >= thr0) { j0 = j; break; }
-    let tTO0 = tTO;
-    if (j0 > 0) tTO0 = (t[j0 - 1] + (ng[j0 - 1] - thr0) / (ng[j0 - 1] - ng[j0]) * (t[j0] - t[j0 - 1]));
-    // atterraggio: fronte d'impatto molto ripido -> soglia a metà (0.5 G) per non anticipare di mezzo campione
-    const thrL = floor + 0.5 * (1 - floor);
-    let k0 = -1;
-    for (let j = Math.min(N - 2, jL + 2); j >= i0; j--) if (ng[j] < thrL && ng[j + 1] >= thrL) { k0 = j; break; }
-    let tLand0 = tLand;
-    if (k0 >= 0) tLand0 = (t[k0] + (ng[k0] - thrL) / (ng[k0] - ng[k0 + 1]) * (t[k0 + 1] - t[k0]));
-    const tvPhys = tLand0 - tTO0;
     flights.push({
-      i0, i1, floor, thr, tTO: tTO0, tTO0, tLand: tLand0, tLand0, tv: tvPhys > CFG.minFlight ? tvPhys : tv,
-      pushPeak: maxIn(t, sm, tTO - 0.6, tTO),
-      landPeak: maxIn(t, sm, tLand, tLand + 0.4)
+      i0, i1, tTO, tTO0: tTO, tLand, tLand0: tLand, tv,
+      pushPeak: maxIn(t, sv, tTO - 0.6, tTO),
+      landPeak: maxIn(t, sv, tLand, tLand + 0.4)
     });
   }
   return flights.filter(f => f.landPeak >= CFG.minLandG);
@@ -392,32 +378,36 @@ function analyzeTrial(raw, proto, opt = {}) {
   out.hz = (N - 1) / (t[N - 1] || 1);
   if (out.hz < 45) out.warnings.push(`Frequenza bassa (${out.hz.toFixed(0)} Hz): precisione ridotta.`);
 
-  // 1) normalizzazione provvisoria e ricerca voli
+  // 1) fase ferma prima del primo picco di spinta/impatto -> gravità del sensore (modulo e direzione)
   let g0 = median(nrm);
-  let ng = Array.from(nrm, v => v / g0);
-  let sm = smooth3(ng);
-  // CMJ/SJ: un solo volo, dopo l'atterraggio il contatto dura > 0.3 s -> si possono unire buchi più lunghi
-  const mp = (proto === 'CMJ' || proto === 'SJ') ? { gap: 0.15, maxG: 2.0 } : {};
-  let flights = detectFlights(t, sm, ng, mp);
-  out.minG = Math.min(...sm); out.maxG = Math.max(...sm);
-  if (!flights.length) {
-    out.err = `Nessun volo rilevato (min ${out.minG.toFixed(2)} G, max ${out.maxG.toFixed(2)} G). Il telefono deve essere ben fissato e devi eseguire un salto completo.`;
-    out.series = { t, sm }; return out;
-  }
-
-  // 2) fase ferma prima del primo stacco -> gravità reale del sensore (corregge errore di scala del telefono)
-  const iFirstTO = idxAt(t, flights[0].tTO - CFG.quietMinLead);
-  const ngProv = Array.from(nrm, v => v / g0);
-  const q = findQuiet(t, ngProv, iFirstTO);
+  const ng = Array.from(nrm, v => v / g0);
+  const sm = smooth3(ng);
+  let iAnchor = sm.findIndex(v => v > 1.6);
+  if (iAnchor < 0) iAnchor = N - 1;
+  const q = findQuiet(t, ng, idxAt(t, t[iAnchor] - CFG.quietMinLead));
+  let ux, uy, uz;
+  const setDir = (s0, s1) => {
+    let x = 0, y = 0, z = 0;
+    for (let i = s0; i <= s1; i++) { x += raw[i].ax; y += raw[i].ay; z += raw[i].az; }
+    const n = Math.hypot(x, y, z); ux = x / n; uy = y / n; uz = z / n; return n / (s1 - s0 + 1);
+  };
   if (q) {
-    g0 = g0 * q.mean;
-    ng = Array.from(nrm, v => v / g0);
-    sm = smooth3(ng);
-    flights = detectFlights(t, sm, ng, mp);
+    g0 = setDir(q.s, q.e);
     if (q.weak) out.warnings.push('Fase di immobilità iniziale poco stabile: resta fermo durante il countdown.');
-  } else out.warnings.push('Nessuna fase ferma prima del salto: calcolo con velocità di stacco non disponibile.');
+  } else {
+    setDir(0, Math.max(1, idxAt(t, Math.min(1, t[N - 1] / 3))));
+    out.warnings.push('Nessuna fase ferma prima del salto: calcolo con velocità di stacco non disponibile.');
+  }
   out.g0 = g0; out.quiet = q ? { t0: t[q.s], t1: t[q.e], sd: q.sd } : null;
-
+  // componente verticale con segno, in G
+  const sv = new Float64Array(N);
+  for (let i = 0; i < N; i++) sv[i] = (raw[i].ax * ux + raw[i].ay * uy + raw[i].az * uz) / g0;
+  out.minG = Math.min(...sv); out.maxG = Math.max(...sv);
+  const flights = detectFlights(t, sv, out.hz);
+  if (!flights.length) {
+    out.err = `Nessun volo rilevato (vert. min ${out.minG.toFixed(2)} G, max ${out.maxG.toFixed(2)} G). Il telefono deve essere ben fissato e devi eseguire un salto completo.`;
+    out.series = { t, sm: sv }; return out;
+  }
   const valid = flights.filter(f => f.pushPeak >= CFG.minPushG);
   out.flights = flights;
 
@@ -456,7 +446,7 @@ function analyzeTrial(raw, proto, opt = {}) {
   }
   out.gyroUsed = pick.gyro; out.vertMode = pick.mode;
   const av = pick.av, v = pick.v;
-  out.series = { t, sm, v };
+  out.series = { t, sm: sv, v };
 
   const hFromTv = tv => G * tv * tv / 8;
   const flightInfo = f => ({ tTO: f.tTO, tLand: f.tLand, tv: f.tv, hTV: hFromTv(f.tv) });
@@ -466,6 +456,9 @@ function analyzeTrial(raw, proto, opt = {}) {
     if (!valid.length) { out.err = 'Volo rilevato ma senza una spinta valida prima dello stacco.'; return out; }
     const main = valid.reduce((a, b) => (b.tv > a.tv ? b : a));
     Object.assign(out, flightInfo(main));
+    out.flights = [main];
+    // nel grafico la velocità integrata ha senso solo fino all'atterraggio (dopo: urti del telefono)
+    for (let i = idxAt(t, main.tLand + 0.1); i < N; i++) v[i] = NaN;
     if (q && main.tTO - t[q.e] > 0.15 && main.tTO - t[q.e] < 3.5) {
       const iTO = idxAt(t, main.tTO0);
       const v0 = interpAt(t, v, main.tTO0);
@@ -858,7 +851,7 @@ function drawChartInner() {
   let gMax = 3; for (let i = 0; i < t.length; i++) if (t[i] >= ta && t[i] <= tb) gMax = Math.max(gMax, sm[i]);
   gMax = Math.min(8, Math.ceil(gMax));
   const X = tt => L + (tt - ta) / (tb - ta) * (W - L - R);
-  const Yg = g => T + (1 - (g + 0.5) / (gMax + 0.5)) * (H - T - B);
+  const Yg = g => T + (1 - (g + 1.5) / (gMax + 1.5)) * (H - T - B);
   const vMin = -3, vMax = 4, Yv = vv => T + (1 - (vv - vMin) / (vMax - vMin)) * (H - T - B);
   ctx.font = '10px monospace';
   for (let g = 0; g <= gMax; g++) {
@@ -883,7 +876,7 @@ function drawChartInner() {
     ctx.stroke();
   };
   if (v) { ctx.save(); ctx.beginPath(); ctx.rect(L, T, W - L - R, H - T - B); ctx.clip(); line(v, '#60a5fa', 1.5); ctx.restore(); }
-  line(sm, '#10b981', 2);
+  ctx.save(); ctx.beginPath(); ctx.rect(L, T, W - L - R, H - T - B); ctx.clip(); line(sm, '#10b981', 2); ctx.restore();
 }
 
 function renderHistory() {
